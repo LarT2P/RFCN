@@ -1,162 +1,128 @@
-"""
-RFCN
-"""
-import torch
-from torch.autograd import Variable
-from torch.utils.data import DataLoader
-import torchvision
-import torch.nn.functional as functional
-
-from dataset import SBDClassSeg, MyTestData
-from transform import Colorize
-from criterion import CrossEntropyLoss2d
-from model import RFCN, FCN8s
-from myfunc import imsave, tensor2image
-import MR
-
-import visdom
-import numpy as np
-import argparse
-import os
 import gc
+import torch
+import torch.nn as nn
+import torch.nn.functional as functional
+from torch.autograd import Variable
+import torchvision
+from dataset import MyData, MyTestData
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--phase', type=str, default='train', help='train or test')
-parser.add_argument('--param', type=str, default=None, help='path to pre-trained parameters')
-parser.add_argument('--data', type=str, default='./train', help='path to input data')
-parser.add_argument('--out', type=str, default='./out', help='path to output data')
-opt = parser.parse_args()
+from model import Feature, Deconv
 
-opt.phase = 'train'
-opt.data = '/media/xyz/Files/data/datasets'
-opt.out = '/media/xyz/Files/data/models/torch/RFCN_pretrain'
-opt.param = '/media/xyz/Files/data/models/torch/RFCN_pretrain/RFCN-epoch-4-step-11354.pth'
+from tensorboard import SummaryWriter
+from datetime import datetime
+import os
+import pdb
+from myfunc import make_image_grid
+import time
+import matplotlib.pyplot as plt
 
-print(opt)
+train_root = '/home/zeng/data/datasets/saliency_Dataset/THUS'
+val_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'
+check_root = './parameters'
+bsize = 16
+iter_num = 20
+ptag = 'MR'
 
-vis = visdom.Visdom()
-win0 = vis.image(torch.zeros(3, 100, 100))
-win1 = vis.image(torch.zeros(3, 100, 100))
-win2 = vis.image(torch.zeros(3, 100, 100))
-win22 = vis.image(torch.zeros(3, 100, 100))
-win3 = vis.image(torch.zeros(3, 100, 100))
-color_transform = Colorize()
-"""parameters"""
-iterNum = 30
+std = [.229, .224, .225]
+mean = [.485, .456, .406]
 
-"""data loader"""
-# dataRoot = '/media/xyz/Files/data/datasets'
-# checkRoot = '/media/xyz/Files/fcn8s-deconv'
-dataRoot = opt.data
-if not os.path.exists(opt.out):
-    os.mkdir(opt.out)
-if opt.phase == 'train':
-    checkRoot = opt.out
-    loader = torch.utils.data.DataLoader(
-        SBDClassSeg(dataRoot, split='train', transform=True),
-        batch_size=1, shuffle=True, num_workers=4, pin_memory=True)
-else:
-    outputRoot = opt.out
-    loader = torch.utils.data.DataLoader(
-        MyTestData(dataRoot, transform=True),
-        batch_size=1, shuffle=True, num_workers=4, pin_memory=True)
+os.system('rm -rf ./runs/*')
+writer = SummaryWriter('./runs/'+datetime.now().strftime('%B%d  %H:%M:%S'))
 
-"""nets"""
-model = RFCN()
-if opt.param is None:
-    vgg16 = torchvision.models.vgg16(pretrained=True)
-    model.copy_params_from_vgg16(vgg16, copy_fc8=False, init_upscore=True)
-else:
-    model.load_state_dict(torch.load(opt.param))
+if not os.path.exists(check_root):
+    os.mkdir(check_root)
 
-criterion = CrossEntropyLoss2d()
-optimizer = torch.optim.Adam(model.parameters(), 0.0001, betas=(0.5, 0.999))
+# models
+feature = Feature()
+feature.cuda()
 
-model = model.cuda()
+deconv = Deconv()
+deconv.cuda()
 
-mr_sal = MR.MR_saliency()
-if opt.phase == 'train':
-    """train"""
-    for it in range(iterNum):
-        epoch_loss = []
-        for ib, data in enumerate(loader):
-            # prior map
-            _img = tensor2image(data[0][0])
-            pmap = mr_sal.saliency(_img).astype(float) / 255.0
-            pmap = 1.0 - pmap
-            pmap = torch.unsqueeze(torch.FloatTensor(pmap), 0)
-            pmap = torch.unsqueeze(pmap, 0)
-            pmap = Variable(pmap).cuda()
-            img = Variable(data[0]).cuda()
+train_loader = torch.utils.data.DataLoader(
+    MyData(train_root, transform=True, ptag=ptag),
+    batch_size=bsize, shuffle=True, num_workers=4, pin_memory=True)
 
-            # segmentation gt and bg&fg gt
-            targets_S = Variable(data[1]).cuda()
-            targets_G = torch.LongTensor(1, targets_S.size()[-2], targets_S.size()[-1]).fill_(0)
-            targets_G[0][data[1] == 0] == 1
-            targets_G = Variable(targets_G).cuda()
+val_loader = torch.utils.data.DataLoader(
+    MyTestData(train_root, transform=True, ptag=ptag),
+    batch_size=1, shuffle=True, num_workers=4, pin_memory=True)
 
-            model.zero_grad()
-            loss = 0
-            for ir in range(3):
-                outputs = model(torch.cat((img, pmap.detach()), 1))  # detach or not?
-                loss_S = criterion(outputs[:, :21, :, :], targets_S)
-                loss_G = criterion(outputs[:, -2:, :, :], targets_G)
-                _loss = loss_G + loss_S
-                _loss.backward()
-                loss += _loss.data[0]
+criterion = nn.BCEWithLogitsLoss()
 
-                # update prior map
-                del pmap
-                gc.collect()
-                pmap = functional.sigmoid(outputs[:, -1, :, :])
-                pmap = torch.unsqueeze(pmap, 0)
+optimizer_deconv = torch.optim.Adam(deconv.parameters(), lr=1e-3)
+optimizer_feature = torch.optim.Adam(feature.parameters(), lr=1e-4)
 
-                # visulize
-                image = img[0].data.cpu()
-                image[0] = image[0] + 122.67891434
-                image[1] = image[1] + 116.66876762
-                image[2] = image[2] + 104.00698793
-                title = 'input (epoch: %d, step: %d, recurrent: %d)' % (it, ib, ir)
-                vis.image(image, win=win1, env='fcn', opts=dict(title=title))
-                title = 'output_c (epoch: %d, step: %d, recurrent: %d)' % (it, ib, ir)
-                vis.image(color_transform(outputs[0, :21].cpu().max(0)[1].data),
-                          win=win2, env='fcn', opts=dict(title=title))
-                title = 'output_l (epoch: %d, step: %d, recurrent: %d)' % (it, ib, ir)
-                bb = functional.sigmoid(outputs[0, -1:].cpu().data)
-                vis.image(bb.repeat(3, 1, 1),
-                          win=win22, env='fcn', opts=dict(title=title))
-                title = 'target (epoch: %d, step: %d, recurrent: %d)' % (it, ib, ir)
-                vis.image(color_transform(targets_S.cpu().data),
-                          win=win3, env='fcn', opts=dict(title=title))
+istep = 0
 
-                del outputs
-                gc.collect()
 
-            # update the net
-            optimizer.step()
+def validation(val_loader, output_root, feature, deconv):
+    if not os.path.exists(output_root):
+        os.mkdir(output_root)
+    for ib, (data, prior, img_name, img_size) in enumerate(val_loader):
+        print ib
+        start = time.time()
+        prior = prior.unsqueeze(1)
+        data = torch.cat((data, prior), 1)
 
-            # show loss plot in this batch
-            epoch_loss.append(loss)
-            average = sum(epoch_loss) / len(epoch_loss)
-            print('loss: %.4f (epoch: %d, step: %d)' % (loss, it, ib))
-            epoch_loss.append(average)
-            x = np.arange(1, len(epoch_loss) + 1, 1)
-            title = 'loss'
-            vis.line(np.array(epoch_loss), x, env='fcn', win=win0,
-                     opts=dict(title=title))
+        inputs = Variable(data).cuda()
 
-            del img, targets_S, targets_G
-            gc.collect()
+        feats = feature(inputs)
+        feats = feats[-3:]
+        feats = feats[::-1]
+        msk = deconv(feats)
 
-        # save parameters in each iteration
-        filename = ('%s/RFCN-epoch-%d-step-%d.pth' \
-                    % (checkRoot, it, ib))
-        torch.save(model.state_dict(), filename)
-        print('save: (epoch: %d, step: %d)' % (it, ib))
-else:
-    for ib, data in enumerate(loader):
-        print('testing batch %d' % ib)
-        inputs = Variable(data[0]).cuda()
-        outputs = model(inputs)
-        hhh = color_transform(outputs[0].cpu().max(0)[1].data)
-        imsave(os.path.join(outputRoot, data[1][0] + '.png'), hhh)
+        msk = functional.upsample(msk, scale_factor=4)
+
+        msk = functional.sigmoid(msk)
+
+        mask = msk.data[0, 0].cpu().numpy()
+        plt.imsave(os.path.join(output_root, img_name[0]+'.png'), mask, cmap='gray')
+
+
+for it in range(iter_num):
+    for ib, (data, prior, lbl) in enumerate(train_loader):
+        prior = prior.unsqueeze(1)
+        data = torch.cat((data, prior), 1)
+
+        inputs = Variable(data).cuda()
+        lbl = Variable(lbl.unsqueeze(1)).cuda()
+
+        feats = feature(inputs)
+        feats = feats[-3:]
+        feats = feats[::-1]
+        msk = deconv(feats)
+
+        msk = functional.upsample(msk, scale_factor=4)
+
+        loss = criterion(msk, lbl)
+
+        deconv.zero_grad()
+        feature.zero_grad()
+
+        loss.backward()
+
+        optimizer_feature.step()
+        optimizer_deconv.step()
+
+        # visulize
+        image = make_image_grid(inputs.data[:, :3], mean, std)
+        writer.add_image('Image', torchvision.utils.make_grid(image), ib)
+        msk = functional.sigmoid(msk)
+        mask1 = msk.data
+        mask1 = mask1.repeat(1, 3, 1, 1)
+        writer.add_image('Image2', torchvision.utils.make_grid(mask1), ib)
+        print('loss: %.4f (epoch: %d, step: %d)' % (loss.data[0], it, ib))
+        writer.add_scalar('M_global', loss.data[0], istep)
+        istep += 1
+
+        del inputs, msk, lbl, loss, feats, mask1, image
+        gc.collect()
+        if ib % 1000 == 0:
+            filename = ('%s/deconv-epoch-%d-step-%d.pth' % (check_root, it, ib))
+            torch.save(deconv.state_dict(), filename)
+            filename = ('%s/feature-epoch-%d-step-%d.pth' % (check_root, it, ib))
+            torch.save(feature.state_dict(), filename)
+            print('save: (epoch: %d, step: %d)' % (it, ib))
+    validation(val_loader, './validation/%d'%it, feature, deconv)
+
+
