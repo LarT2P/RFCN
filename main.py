@@ -20,8 +20,9 @@ train_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'  # training datas
 val_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'  # validation dataset
 check_root = './parameters'  # save checkpoint parameters
 val_output_root = './validation'  # save validation results
-bsize = 16  # batch size
+bsize = 1  # batch size
 iter_num = 20  # training iterations
+r_num = 3  # recurrence
 ptag = 'MR'  # prior map
 
 std = [.229, .224, .225]
@@ -88,20 +89,22 @@ def validation(val_loader, output_root, feature, deconv):
 
 for it in range(iter_num):
     for ib, (data, prior, lbl) in enumerate(train_loader):
-        prior = prior.unsqueeze(1)
-        data = torch.cat((data, prior), 1)
+        prior = Variable(prior.unsqueeze(1)).cuda()
 
         inputs = Variable(data).cuda()
         lbl = Variable(lbl.unsqueeze(1)).cuda()
 
-        feats = feature(inputs)
-        feats = feats[-3:]
-        feats = feats[::-1]
-        msk = deconv(feats)
+        loss = 0
 
-        msk = functional.upsample(msk, scale_factor=4)
-
-        loss = criterion(msk, lbl)
+        for ir in range(r_num):
+            inputs4c = torch.cat((inputs, prior), 1)
+            feats = feature(inputs4c)
+            feats = feats[-3:]
+            feats = feats[::-1]
+            msk = deconv(feats)
+            msk = functional.upsample(msk, scale_factor=4)
+            prior = functional.sigmoid(msk)
+            loss += criterion(msk, lbl)
 
         deconv.zero_grad()
         feature.zero_grad()
