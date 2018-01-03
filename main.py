@@ -16,12 +16,13 @@ from myfunc import make_image_grid
 import time
 import matplotlib.pyplot as plt
 
-train_root = '/home/zeng/data/datasets/saliency_Dataset/THUS'
-val_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'
-check_root = './parameters'
-bsize = 16
-iter_num = 20
-ptag = 'MR'
+train_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'  # training dataset
+val_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'  # validation dataset
+check_root = './parameters'  # save checkpoint parameters
+val_output_root = './validation'  # save validation results
+bsize = 16  # batch size
+iter_num = 20  # training iterations
+ptag = 'MR'  # prior map
 
 std = [.229, .224, .225]
 mean = [.485, .456, .406]
@@ -29,8 +30,14 @@ mean = [.485, .456, .406]
 os.system('rm -rf ./runs/*')
 writer = SummaryWriter('./runs/'+datetime.now().strftime('%B%d  %H:%M:%S'))
 
+if not os.path.exists('./runs'):
+    os.mkdir('./runs')
+
 if not os.path.exists(check_root):
     os.mkdir(check_root)
+
+if not os.path.exists(val_output_root):
+    os.mkdir(val_output_root)
 
 # models
 feature = Feature()
@@ -123,6 +130,6 @@ for it in range(iter_num):
             filename = ('%s/feature-epoch-%d-step-%d.pth' % (check_root, it, ib))
             torch.save(feature.state_dict(), filename)
             print('save: (epoch: %d, step: %d)' % (it, ib))
-    validation(val_loader, './validation/%d'%it, feature, deconv)
+    validation(val_loader, '%s/%d'%(val_output_root, it), feature, deconv)
 
 
