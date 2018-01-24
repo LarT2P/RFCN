@@ -52,7 +52,7 @@ train_loader = torch.utils.data.DataLoader(
     batch_size=bsize, shuffle=True, num_workers=4, pin_memory=True)
 
 val_loader = torch.utils.data.DataLoader(
-    MyTestData(train_root, transform=True, ptag=ptag),
+    MyTestData(val_root, transform=True, ptag=ptag),
     batch_size=1, shuffle=True, num_workers=4, pin_memory=True)
 
 criterion = nn.BCEWithLogitsLoss()
@@ -84,6 +84,7 @@ def validation(val_loader, output_root, feature, deconv):
         msk = functional.sigmoid(msk)
 
         mask = msk.data[0, 0].cpu().numpy()
+        mask = cv2.resize(mask, dsize=(img_size[0][0], img_size[1][0]))
         plt.imsave(os.path.join(output_root, img_name[0]+'.png'), mask, cmap='gray')
 
 
