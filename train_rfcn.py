@@ -7,7 +7,7 @@ import torchvision
 from dataset import MyData, MyTestData
 
 from model import Feature, Deconv
-
+import cv2
 from tensorboard import SummaryWriter
 from datetime import datetime
 import os
@@ -16,10 +16,10 @@ from myfunc import make_image_grid
 import time
 import matplotlib.pyplot as plt
 
-train_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'  # training dataset
+train_root = '/home/zeng/data/datasets/saliency_Dataset/DUTS-train'  # training dataset
 val_root = '/home/zeng/data/datasets/saliency_Dataset/ECSSD'  # validation dataset
-check_root = './parameters'  # save checkpoint parameters
-val_output_root = './validation'  # save validation results
+check_root = './rfcn_parameters'  # save checkpoint parameters
+val_output_root = './rfcn_validation'  # save validation results
 bsize = 1  # batch size
 iter_num = 20  # training iterations
 r_num = 3  # recurrence
@@ -68,7 +68,6 @@ def validation(val_loader, output_root, feature, deconv):
         os.mkdir(output_root)
     for ib, (data, prior, img_name, img_size) in enumerate(val_loader):
         print ib
-        start = time.time()
         prior = prior.unsqueeze(1)
         data = torch.cat((data, prior), 1)
 
