@@ -1,4 +1,4 @@
-# RFCN
+# RFCN 
 This is a Pytorch implementation of RFCN[1] for saliency detection. This is slightly different from the original version. 
 
 pytorch版的做显著性检测的RFCN[1]的代码。和matlab原版有点不同。
@@ -12,6 +12,7 @@ pytorch版的做显著性检测的RFCN[1]的代码。和matlab原版有点不同
 pytorch, [tensorboard-pytorch](https://github.com/lanpa/tensorboard-pytorch), tensorboard
 
 如果不需要可视化就不需要tensorboard和tensorboard-pytorch。删除代码里可视化的部分就能运行。
+（现在新版改名叫tensorboardX了，如果下载了新版的tensorboard-pytorch就把import tensorboard改成import tensorboardX）
 
 ## usage
 1. 准备训练图片和validation图片，包括prior maps。图片的文件夹如此组织：
@@ -27,8 +28,13 @@ tensorboard --logdir runs
 
 ```
 4. 运行
+* 有循环的
 ```shell
-python main.py
+python train_rfcn.py
+```
+* 没有循环的
+```angular2html
+python train_fcn.py
 ```
 
 
