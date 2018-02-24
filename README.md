@@ -1,6 +1,4 @@
 # RFCN 
-This is a Pytorch implementation of RFCN[1] for saliency detection. This is slightly different from the original version. 
-
 pytorch版的做显著性检测的RFCN[1]的代码。和matlab原版有点不同。
 * 我没有实现原版产生prior map的方法，而是训练时输入prior map。
 * 加入了扩张卷积
