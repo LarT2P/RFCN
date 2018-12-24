@@ -11,9 +11,7 @@ import cv2
 from tensorboard import SummaryWriter
 from datetime import datetime
 import os
-import pdb
 from myfunc import make_image_grid
-import time
 import matplotlib.pyplot as plt
 
 train_root = '/home/zeng/data/datasets/saliency_Dataset/DUTS-train'  # training dataset
@@ -29,7 +27,7 @@ std = [.229, .224, .225]
 mean = [.485, .456, .406]
 
 os.system('rm -rf ./runs/*')
-writer = SummaryWriter('./runs/'+datetime.now().strftime('%B%d  %H:%M:%S'))
+writer = SummaryWriter('./runs/' + datetime.now().strftime('%B%d  %H:%M:%S'))
 
 if not os.path.exists('./runs'):
     os.mkdir('./runs')
@@ -67,35 +65,37 @@ def validation(val_loader, output_root, feature, deconv):
     if not os.path.exists(output_root):
         os.mkdir(output_root)
     for ib, (data, prior, img_name, img_size) in enumerate(val_loader):
-        print ib
+        print
+        ib
         prior = prior.unsqueeze(1)
         data = torch.cat((data, prior), 1)
-
+        
         inputs = Variable(data).cuda()
-
+        
         feats = feature(inputs)
         feats = feats[-3:]
         feats = feats[::-1]
         msk = deconv(feats)
-
+        
         msk = functional.upsample(msk, scale_factor=4)
-
+        
         msk = functional.sigmoid(msk)
-
+        
         mask = msk.data[0, 0].cpu().numpy()
         mask = cv2.resize(mask, dsize=(img_size[0][0], img_size[1][0]))
-        plt.imsave(os.path.join(output_root, img_name[0]+'.png'), mask, cmap='gray')
+        plt.imsave(os.path.join(output_root, img_name[0] + '.png'), mask, cmap='gray')
 
 
 for it in range(iter_num):
+    # 第一次迭代
     for ib, (data, prior, lbl) in enumerate(train_loader):
         prior = Variable(prior.unsqueeze(1)).cuda()
-
+        
         inputs = Variable(data).cuda()
         lbl = Variable(lbl.unsqueeze(1)).cuda()
-
+        
         loss = 0
-
+        
         for ir in range(r_num):
             inputs4c = torch.cat((inputs, prior), 1)
             feats = feature(inputs4c)
@@ -105,15 +105,15 @@ for it in range(iter_num):
             msk = functional.upsample(msk, scale_factor=4)
             prior = functional.sigmoid(msk)
             loss += criterion(msk, lbl)
-
+        
         deconv.zero_grad()
         feature.zero_grad()
-
+        
         loss.backward()
-
+        
         optimizer_feature.step()
         optimizer_deconv.step()
-
+        
         # visulize
         image = make_image_grid(inputs.data[:, :3], mean, std)
         writer.add_image('Image', torchvision.utils.make_grid(image), ib)
@@ -124,7 +124,7 @@ for it in range(iter_num):
         print('loss: %.4f (epoch: %d, step: %d)' % (loss.data[0], it, ib))
         writer.add_scalar('M_global', loss.data[0], istep)
         istep += 1
-
+        
         del inputs, msk, lbl, loss, feats, mask1, image
         gc.collect()
         if ib % 1000 == 0:
@@ -133,6 +133,4 @@ for it in range(iter_num):
             filename = ('%s/feature-epoch-%d-step-%d.pth' % (check_root, it, ib))
             torch.save(feature.state_dict(), filename)
             print('save: (epoch: %d, step: %d)' % (it, ib))
-    validation(val_loader, '%s/%d'%(val_output_root, it), feature, deconv)
-
-
+    validation(val_loader, '%s/%d' % (val_output_root, it), feature, deconv)

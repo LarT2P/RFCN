@@ -30,7 +30,7 @@ std = [.229, .224, .225]
 mean = [.485, .456, .406]
 
 os.system('rm -rf ./runs/*')
-writer = SummaryWriter('./runs/'+datetime.now().strftime('%B%d  %H:%M:%S'))
+writer = SummaryWriter('./runs/' + datetime.now().strftime('%B%d  %H:%M:%S'))
 
 if not os.path.exists('./runs'):
     os.mkdir('./runs')
@@ -68,32 +68,33 @@ def validation(val_loader, output_root, feature, deconv):
     if not os.path.exists(output_root):
         os.mkdir(output_root)
     for ib, (data, _, img_name, img_size) in enumerate(val_loader):
-        print ib
-
+        print
+        ib
+        
         inputs = Variable(data).cuda()
-
+        
         feats = feature(inputs)
         feats = feats[-3:]
         feats = feats[::-1]
         msk = deconv(feats)
-
+        
         msk = functional.upsample(msk, scale_factor=4)
-
+        
         msk = functional.sigmoid(msk)
-
+        
         mask = msk.data[0, 0].cpu().numpy()
         mask = cv2.resize(mask, dsize=(img_size[0][0], img_size[1][0]))
-        plt.imsave(os.path.join(output_root, img_name[0]+'.png'), mask, cmap='gray')
+        plt.imsave(os.path.join(output_root, img_name[0] + '.png'), mask, cmap='gray')
 
 
 for it in range(iter_num):
     for ib, (data, _, lbl) in enumerate(train_loader):
-
+        
         inputs = Variable(data).cuda()
         lbl = Variable(lbl.unsqueeze(1)).cuda()
-
+        
         loss = 0
-
+        
         feats = feature(inputs)
         feats = feats[-3:]
         feats = feats[::-1]
@@ -101,15 +102,15 @@ for it in range(iter_num):
         msk = functional.upsample(msk, scale_factor=4)
         prior = functional.sigmoid(msk)
         loss += criterion(msk, lbl)
-
+        
         deconv.zero_grad()
         feature.zero_grad()
-
+        
         loss.backward()
-
+        
         optimizer_feature.step()
         optimizer_deconv.step()
-
+        
         # visulize
         image = make_image_grid(inputs.data[:, :3], mean, std)
         writer.add_image('Image', torchvision.utils.make_grid(image), ib)
@@ -120,7 +121,7 @@ for it in range(iter_num):
         print('loss: %.4f (epoch: %d, step: %d)' % (loss.data[0], it, ib))
         writer.add_scalar('M_global', loss.data[0], istep)
         istep += 1
-
+        
         del inputs, msk, lbl, loss, feats, mask1, image
         gc.collect()
         if ib % 1000 == 0:
@@ -129,6 +130,4 @@ for it in range(iter_num):
             filename = ('%s/feature-epoch-%d-step-%d.pth' % (check_root, it, ib))
             torch.save(feature.state_dict(), filename)
             print('save: (epoch: %d, step: %d)' % (it, ib))
-    validation(val_loader, '%s/%d'%(val_output_root, it), feature, deconv)
-
-
+    validation(val_loader, '%s/%d' % (val_output_root, it), feature, deconv)

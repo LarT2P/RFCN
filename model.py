@@ -4,6 +4,7 @@ import torchvision
 import pdb
 from torch.nn import init
 
+
 class Feature(nn.Module):
     def __init__(self):
         super(Feature, self).__init__()
@@ -56,26 +57,26 @@ class Feature(nn.Module):
         self.features = nn.ModuleList(self.features)
         vgg16 = torchvision.models.vgg16(pretrained=True)
         L_vgg16 = list(vgg16.features)
-        L_self = reduce(lambda x,y: list(x)+list(y), self.features)
+        L_self = reduce(lambda x, y: list(x) + list(y), self.features)
         L_self[0].weight.data[:, :-1] = L_vgg16[0].weight.data
         for l1, l2 in zip(L_vgg16[1:], L_self[1:]):
             if (isinstance(l1, nn.Conv2d) and
-                    isinstance(l2, nn.Conv2d)):
+                isinstance(l2, nn.Conv2d)):
                 assert l1.weight.size() == l2.weight.size()
                 assert l1.bias.size() == l2.bias.size()
                 l2.weight.data = l1.weight.data
                 l2.bias.data = l1.bias.data
             if (isinstance(l1, nn.BatchNorm2d) and
-                    isinstance(l2, nn.BatchNorm2d)):
+                isinstance(l2, nn.BatchNorm2d)):
                 assert l1.weight.size() == l2.weight.size()
                 assert l1.bias.size() == l2.bias.size()
                 l2.weight.data = l1.weight.data
                 l2.bias.data = l1.bias.data
-
+    
     def cuda(self):
         for f in self.features:
             f.cuda()
-
+    
     def forward(self, x):
         feats = []
         for f in self.features:
@@ -136,25 +137,25 @@ class Feature_FCN(nn.Module):
         self.features = nn.ModuleList(self.features)
         vgg16 = torchvision.models.vgg16(pretrained=True)
         L_vgg16 = list(vgg16.features)
-        L_self = reduce(lambda x,y: list(x)+list(y), self.features)
+        L_self = reduce(lambda x, y: list(x) + list(y), self.features)
         for l1, l2 in zip(L_vgg16, L_self):
             if (isinstance(l1, nn.Conv2d) and
-                    isinstance(l2, nn.Conv2d)):
+                isinstance(l2, nn.Conv2d)):
                 assert l1.weight.size() == l2.weight.size()
                 assert l1.bias.size() == l2.bias.size()
                 l2.weight.data = l1.weight.data
                 l2.bias.data = l1.bias.data
             if (isinstance(l1, nn.BatchNorm2d) and
-                    isinstance(l2, nn.BatchNorm2d)):
+                isinstance(l2, nn.BatchNorm2d)):
                 assert l1.weight.size() == l2.weight.size()
                 assert l1.bias.size() == l2.bias.size()
                 l2.weight.data = l1.weight.data
                 l2.bias.data = l1.bias.data
-
+    
     def cuda(self):
         for f in self.features:
             f.cuda()
-
+    
     def forward(self, x):
         feats = []
         for f in self.features:
@@ -182,7 +183,7 @@ class Deconv(nn.Module):
             if isinstance(m, nn.Conv2d):
                 init.xavier_normal(m.weight.data)
                 m.bias.data.fill_(0)
-
+    
     def forward(self, feats):
         for i in range(len(feats)):
             feats[i] = self.reduce_dimension[i](feats[i])
